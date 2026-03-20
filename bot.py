@@ -88,7 +88,7 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     except Exception as e:
         logger.error(f"Parsing failed for {filename}: {e}", exc_info=True)
         await status_msg.edit_text(
-            "Не удалось обработать PDF. Возможно, файл повреждён или защищён паролем."
+            f"Не удалось обработать PDF.\n\nОшибка: {type(e).__name__}: {e}"
         )
         return
 
@@ -100,7 +100,7 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     except Exception as e:
         logger.error(f"Sheets write failed: {e}", exc_info=True)
         await status_msg.edit_text(
-            "Данные извлечены, но не удалось записать в таблицу. Проверь настройки Google Sheets."
+            f"Данные извлечены, но не удалось записать в таблицу.\n\nОшибка: {type(e).__name__}: {e}"
         )
         return
 
