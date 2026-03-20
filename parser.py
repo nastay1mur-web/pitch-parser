@@ -97,7 +97,10 @@ def call_vision_api(images_bytes: list[bytes]) -> str:
         headers=headers,
         timeout=120,
     )
-    response.raise_for_status()
+    if not response.ok:
+        raise RuntimeError(
+            f"OpenRouter {response.status_code}: {response.text[:500]}"
+        )
 
     raw = response.json()["choices"][0]["message"]["content"]
     logger.info("OpenRouter API responded successfully")
