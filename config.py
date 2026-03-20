@@ -27,7 +27,7 @@ POPPLER_PATH: str = os.getenv("POPPLER_PATH", "")
 
 # OpenRouter
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-VISION_MODEL = "google/gemini-2.0-flash-exp:free"
+VISION_MODEL = "meta-llama/llama-3.2-11b-vision-instruct:free"
 
 # PDF processing
 MAX_PAGES = 20
