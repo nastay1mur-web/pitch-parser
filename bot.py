@@ -83,7 +83,7 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     # --- Parse ---
     try:
-        await status_msg.edit_text("Конвертирую страницы в изображения...")
+        await status_msg.edit_text("Извлекаю текст из PDF...")
         data, total_pages = pitch_parser.process_pdf(pdf_bytes)
     except Exception as e:
         logger.error(f"Parsing failed for {filename}: {e}", exc_info=True)

@@ -1,13 +1,11 @@
-import base64
 import io
 import json
 import logging
 import re
 from typing import Optional
 
+import pdfplumber
 import requests
-from pdf2image import convert_from_bytes
-from PIL import Image
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 import config
@@ -21,36 +19,26 @@ EXPECTED_KEYS = [
     "competitors", "stage", "contacts", "country", "industry", "pitch_date",
 ]
 
-GEMINI_API_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.0-flash-lite:generateContent"
-)
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
-def pdf_to_images(pdf_bytes: bytes) -> tuple[list[bytes], int]:
-    """Convert PDF bytes to list of JPEG image bytes. Returns (images, total_pages)."""
-    pages = convert_from_bytes(
-        pdf_bytes,
-        dpi=config.IMAGE_DPI,
-        fmt="jpeg",
-        poppler_path=config.POPPLER_PATH or None,
-    )
-    total_pages = len(pages)
-    if total_pages > config.MAX_PAGES:
-        logger.warning(f"PDF has {total_pages} pages, truncating to {config.MAX_PAGES}")
-        pages = pages[:config.MAX_PAGES]
+def pdf_to_text(pdf_bytes: bytes) -> tuple[str, int]:
+    """Extract text from PDF bytes. Returns (text, total_pages)."""
+    text_parts = []
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        total_pages = len(pdf.pages)
+        pages_to_process = min(total_pages, config.MAX_PAGES)
+        for i, page in enumerate(pdf.pages[:pages_to_process]):
+            page_text = page.extract_text() or ""
+            if page_text.strip():
+                text_parts.append(f"--- Slide {i+1} ---\n{page_text}")
 
-    result = []
-    for page in pages:
-        page.thumbnail(
-            (config.IMAGE_MAX_SIDE, config.IMAGE_MAX_SIDE),
-            Image.LANCZOS,
-        )
-        buf = io.BytesIO()
-        page.save(buf, format="JPEG", optimize=True, quality=config.IMAGE_QUALITY)
-        result.append(buf.getvalue())
+    full_text = "\n\n".join(text_parts)
+    if not full_text.strip():
+        full_text = "(No text could be extracted from this PDF)"
 
-    return result, total_pages
+    logger.info(f"Extracted {len(full_text)} characters from {pages_to_process} pages")
+    return full_text, total_pages
 
 
 @retry(
@@ -62,42 +50,30 @@ def pdf_to_images(pdf_bytes: bytes) -> tuple[list[bytes], int]:
     ),
     reraise=True,
 )
-def call_vision_api(images_bytes: list[bytes]) -> str:
-    """Send images to Gemini vision model via REST API. Returns raw text response."""
-    parts = []
-    for img_bytes in images_bytes:
-        b64 = base64.b64encode(img_bytes).decode("utf-8")
-        parts.append({
-            "inline_data": {
-                "mime_type": "image/jpeg",
-                "data": b64,
-            }
-        })
-    parts.append({"text": USER_PROMPT})
-
+def call_llm_api(text: str) -> str:
+    """Send extracted text to Groq LLM. Returns raw text response."""
     payload = {
-        "system_instruction": {
-            "parts": [{"text": SYSTEM_PROMPT}]
-        },
-        "contents": [{"parts": parts}],
-        "generationConfig": {
-            "temperature": 0.1,
-        },
+        "model": config.LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"{USER_PROMPT}\n\n{text}"},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 2000,
+    }
+    headers = {
+        "Authorization": f"Bearer {config.GROQ_API_KEY}",
+        "Content-Type": "application/json",
     }
 
-    logger.info(f"Calling Gemini API with {len(images_bytes)} images")
-    response = requests.post(
-        GEMINI_API_URL,
-        params={"key": config.GEMINI_API_KEY},
-        json=payload,
-        timeout=120,
-    )
+    logger.info(f"Calling Groq API, text length: {len(text)} chars")
+    response = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=60)
 
     if not response.ok:
-        raise RuntimeError(f"Gemini API {response.status_code}: {response.text[:500]}")
+        raise RuntimeError(f"Groq API {response.status_code}: {response.text[:500]}")
 
-    raw = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-    logger.info("Gemini API responded successfully")
+    raw = response.json()["choices"][0]["message"]["content"]
+    logger.info("Groq API responded successfully")
     return raw
 
 
@@ -140,7 +116,7 @@ def parse_llm_response(raw: str) -> dict:
 
 def process_pdf(pdf_bytes: bytes) -> tuple[dict, int]:
     """Full pipeline: PDF bytes -> structured dict. Returns (data, total_pages)."""
-    images, total_pages = pdf_to_images(pdf_bytes)
-    raw_response = call_vision_api(images)
+    text, total_pages = pdf_to_text(pdf_bytes)
+    raw_response = call_llm_api(text)
     data = parse_llm_response(raw_response)
     return data, total_pages

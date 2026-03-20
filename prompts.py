@@ -1,9 +1,9 @@
-SYSTEM_PROMPT = """You are an expert investment analyst. You will receive images of slides from a startup pitch deck.
+SYSTEM_PROMPT = """You are an expert investment analyst. You will receive text extracted from a startup pitch deck.
 
-Your task: extract structured information from the slides and return it as a single valid JSON object.
+Your task: extract structured information from the text and return it as a single valid JSON object.
 
 IMPORTANT RULES:
-1. Read ALL slides carefully before answering.
+1. Read ALL text carefully before answering.
 2. The pitch may be in Russian, English, or mixed — handle both languages.
 3. If a field is not present in the pitch — use exactly this value: "-"
 4. Do NOT invent or assume data that is not explicitly shown.
@@ -28,8 +28,8 @@ REQUIRED JSON STRUCTURE (return exactly these keys):
   "contacts": "Website, email, Telegram or other contact info",
   "country": "Country where the startup is based or incorporated",
   "industry": "Industry vertical, e.g. FinTech, EdTech, B2B SaaS, HealthTech, etc.",
-  "pitch_date": "Date of the pitch or pitch deck creation (format: YYYY-MM-DD). Check slide footers, title slides, and document metadata. If not found: -"
+  "pitch_date": "Date of the pitch or pitch deck creation (format: YYYY-MM-DD). If not found: -"
 }
 """
 
-USER_PROMPT = "These are the slides from a startup pitch deck. Extract all information according to the instructions and return valid JSON."
+USER_PROMPT = "Here is the text extracted from a startup pitch deck. Extract all information according to the instructions and return valid JSON."
