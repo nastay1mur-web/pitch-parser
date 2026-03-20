@@ -23,7 +23,7 @@ EXPECTED_KEYS = [
 
 GEMINI_API_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-1.5-flash-latest:generateContent"
+    "gemini-2.0-flash-lite:generateContent"
 )
 
 
