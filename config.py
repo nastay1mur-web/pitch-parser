@@ -7,7 +7,6 @@ REQUIRED_VARS = [
     "OPENROUTER_API_KEY",
     "TELEGRAM_TOKEN",
     "GOOGLE_SHEET_ID",
-    "GOOGLE_CREDENTIALS_PATH",
 ]
 
 for _var in REQUIRED_VARS:
@@ -20,7 +19,8 @@ for _var in REQUIRED_VARS:
 OPENROUTER_API_KEY: str = os.environ["OPENROUTER_API_KEY"]
 TELEGRAM_TOKEN: str = os.environ["TELEGRAM_TOKEN"]
 GOOGLE_SHEET_ID: str = os.environ["GOOGLE_SHEET_ID"]
-GOOGLE_CREDENTIALS_PATH: str = os.environ["GOOGLE_CREDENTIALS_PATH"]
+GOOGLE_CREDENTIALS_PATH: str = os.getenv("GOOGLE_CREDENTIALS_PATH", "config/service-account.json")
+GOOGLE_CREDENTIALS_JSON: str = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
 
 # Optional: full path to poppler/bin on Windows (leave empty if poppler is in PATH)
 POPPLER_PATH: str = os.getenv("POPPLER_PATH", "")

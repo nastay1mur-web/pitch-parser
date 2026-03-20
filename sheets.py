@@ -1,4 +1,7 @@
+import json
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
 
 import gspread
@@ -23,12 +26,20 @@ _KEY_TO_COLUMN = [
 ]
 
 
-def init_sheets() -> gspread.Worksheet:
-    """Authorize and return the first worksheet. Ensures headers exist."""
-    creds = Credentials.from_service_account_file(
+def _get_credentials() -> Credentials:
+    """Load credentials from JSON env var or file."""
+    if config.GOOGLE_CREDENTIALS_JSON:
+        info = json.loads(config.GOOGLE_CREDENTIALS_JSON)
+        return Credentials.from_service_account_info(info, scopes=SCOPES)
+    return Credentials.from_service_account_file(
         config.GOOGLE_CREDENTIALS_PATH,
         scopes=SCOPES,
     )
+
+
+def init_sheets() -> gspread.Worksheet:
+    """Authorize and return the first worksheet. Ensures headers exist."""
+    creds = _get_credentials()
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(config.GOOGLE_SHEET_ID)
     worksheet = spreadsheet.sheet1
