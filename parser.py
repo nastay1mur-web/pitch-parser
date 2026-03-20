@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Optional
 
-import google.generativeai as genai
+import requests
 from pdf2image import convert_from_bytes
 from PIL import Image
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -15,18 +15,20 @@ from prompts import SYSTEM_PROMPT, USER_PROMPT
 
 logger = logging.getLogger(__name__)
 
-# JSON keys that must be present in the response
 EXPECTED_KEYS = [
     "name", "elevator_pitch", "problem", "market", "solution",
     "technology", "business_model", "traction", "team", "round",
     "competitors", "stage", "contacts", "country", "industry", "pitch_date",
 ]
 
-genai.configure(api_key=config.GEMINI_API_KEY)
+GEMINI_API_URL = (
+    "https://generativelanguage.googleapis.com/v1/models/"
+    "gemini-1.5-flash:generateContent"
+)
 
 
-def pdf_to_images(pdf_bytes: bytes) -> tuple[list, int]:
-    """Convert PDF bytes to list of PIL Image objects. Returns (images, total_pages)."""
+def pdf_to_images(pdf_bytes: bytes) -> tuple[list[bytes], int]:
+    """Convert PDF bytes to list of JPEG image bytes. Returns (images, total_pages)."""
     pages = convert_from_bytes(
         pdf_bytes,
         dpi=config.IMAGE_DPI,
@@ -44,7 +46,9 @@ def pdf_to_images(pdf_bytes: bytes) -> tuple[list, int]:
             (config.IMAGE_MAX_SIDE, config.IMAGE_MAX_SIDE),
             Image.LANCZOS,
         )
-        result.append(page)
+        buf = io.BytesIO()
+        page.save(buf, format="JPEG", optimize=True, quality=config.IMAGE_QUALITY)
+        result.append(buf.getvalue())
 
     return result, total_pages
 
@@ -58,20 +62,43 @@ def pdf_to_images(pdf_bytes: bytes) -> tuple[list, int]:
     ),
     reraise=True,
 )
-def call_vision_api(images: list) -> str:
-    """Send images to Gemini vision model. Returns raw text response."""
-    model = genai.GenerativeModel(
-        model_name=config.VISION_MODEL,
-        system_instruction=SYSTEM_PROMPT,
+def call_vision_api(images_bytes: list[bytes]) -> str:
+    """Send images to Gemini vision model via REST API. Returns raw text response."""
+    parts = []
+    for img_bytes in images_bytes:
+        b64 = base64.b64encode(img_bytes).decode("utf-8")
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": b64,
+            }
+        })
+    parts.append({"text": USER_PROMPT})
+
+    payload = {
+        "system_instruction": {
+            "parts": [{"text": SYSTEM_PROMPT}]
+        },
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "temperature": 0.1,
+        },
+    }
+
+    logger.info(f"Calling Gemini API with {len(images_bytes)} images")
+    response = requests.post(
+        GEMINI_API_URL,
+        params={"key": config.GEMINI_API_KEY},
+        json=payload,
+        timeout=120,
     )
 
-    # Build content: all images + prompt text
-    content = images + [USER_PROMPT]
+    if not response.ok:
+        raise RuntimeError(f"Gemini API {response.status_code}: {response.text[:500]}")
 
-    logger.info(f"Calling Gemini API with {len(images)} images")
-    response = model.generate_content(content)
+    raw = response.json()["candidates"][0]["content"]["parts"][0]["text"]
     logger.info("Gemini API responded successfully")
-    return response.text
+    return raw
 
 
 def _extract_json(raw: str) -> Optional[dict]:
