@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 REQUIRED_VARS = [
-    "OPENROUTER_API_KEY",
+    "GEMINI_API_KEY",
     "TELEGRAM_TOKEN",
     "GOOGLE_SHEET_ID",
 ]
@@ -16,7 +16,7 @@ for _var in REQUIRED_VARS:
             f"Check your .env file (see .env.example)"
         )
 
-OPENROUTER_API_KEY: str = os.environ["OPENROUTER_API_KEY"]
+GEMINI_API_KEY: str = os.environ["GEMINI_API_KEY"]
 TELEGRAM_TOKEN: str = os.environ["TELEGRAM_TOKEN"]
 GOOGLE_SHEET_ID: str = os.environ["GOOGLE_SHEET_ID"]
 GOOGLE_CREDENTIALS_PATH: str = os.getenv("GOOGLE_CREDENTIALS_PATH", "config/service-account.json")
@@ -25,9 +25,8 @@ GOOGLE_CREDENTIALS_JSON: str = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
 # Optional: full path to poppler/bin on Windows (leave empty if poppler is in PATH)
 POPPLER_PATH: str = os.getenv("POPPLER_PATH", "")
 
-# OpenRouter
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-VISION_MODEL = "qwen/qwen2-vl-7b-instruct:free"
+# Gemini
+VISION_MODEL = "gemini-1.5-flash"
 
 # PDF processing
 MAX_PAGES = 20

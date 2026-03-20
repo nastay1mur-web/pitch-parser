@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Optional
 
-import requests
+import google.generativeai as genai
 from pdf2image import convert_from_bytes
 from PIL import Image
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -22,9 +22,11 @@ EXPECTED_KEYS = [
     "competitors", "stage", "contacts", "country", "industry", "pitch_date",
 ]
 
+genai.configure(api_key=config.GEMINI_API_KEY)
 
-def pdf_to_images(pdf_bytes: bytes) -> tuple[list[bytes], int]:
-    """Convert PDF bytes to list of JPEG image bytes. Returns (images, total_pages)."""
+
+def pdf_to_images(pdf_bytes: bytes) -> tuple[list, int]:
+    """Convert PDF bytes to list of PIL Image objects. Returns (images, total_pages)."""
     pages = convert_from_bytes(
         pdf_bytes,
         dpi=config.IMAGE_DPI,
@@ -38,31 +40,13 @@ def pdf_to_images(pdf_bytes: bytes) -> tuple[list[bytes], int]:
 
     result = []
     for page in pages:
-        # Resize: keep aspect ratio, limit long side to IMAGE_MAX_SIDE
         page.thumbnail(
             (config.IMAGE_MAX_SIDE, config.IMAGE_MAX_SIDE),
             Image.LANCZOS,
         )
-        buf = io.BytesIO()
-        page.save(buf, format="JPEG", optimize=True, quality=config.IMAGE_QUALITY)
-        result.append(buf.getvalue())
+        result.append(page)
 
     return result, total_pages
-
-
-def _images_to_content(images_bytes: list[bytes]) -> list[dict]:
-    """Build OpenRouter message content from image bytes."""
-    content = []
-    for img_bytes in images_bytes:
-        b64 = base64.b64encode(img_bytes).decode("utf-8")
-        content.append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{b64}",
-            },
-        })
-    content.append({"type": "text", "text": USER_PROMPT})
-    return content
 
 
 @retry(
@@ -74,47 +58,28 @@ def _images_to_content(images_bytes: list[bytes]) -> list[dict]:
     ),
     reraise=True,
 )
-def call_vision_api(images_bytes: list[bytes]) -> str:
-    """Send images to OpenRouter vision model. Returns raw text response."""
-    payload = {
-        "model": config.VISION_MODEL,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": _images_to_content(images_bytes)},
-        ],
-    }
-    headers = {
-        "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/parser-pitch",
-        "X-Title": "Pitch Parser Bot",
-    }
-
-    logger.info(f"Calling OpenRouter API with {len(images_bytes)} images")
-    response = requests.post(
-        config.OPENROUTER_API_URL,
-        json=payload,
-        headers=headers,
-        timeout=120,
+def call_vision_api(images: list) -> str:
+    """Send images to Gemini vision model. Returns raw text response."""
+    model = genai.GenerativeModel(
+        model_name=config.VISION_MODEL,
+        system_instruction=SYSTEM_PROMPT,
     )
-    if not response.ok:
-        raise RuntimeError(
-            f"OpenRouter {response.status_code}: {response.text[:500]}"
-        )
 
-    raw = response.json()["choices"][0]["message"]["content"]
-    logger.info("OpenRouter API responded successfully")
-    return raw
+    # Build content: all images + prompt text
+    content = images + [USER_PROMPT]
+
+    logger.info(f"Calling Gemini API with {len(images)} images")
+    response = model.generate_content(content)
+    logger.info("Gemini API responded successfully")
+    return response.text
 
 
 def _extract_json(raw: str) -> Optional[dict]:
     """Try to extract a JSON object from raw LLM response."""
-    # 1. Try to find ```json ... ``` block
     match = re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL)
     if match:
         candidate = match.group(1)
     else:
-        # 2. Find first { ... } spanning the whole object
         start = raw.find("{")
         end = raw.rfind("}")
         if start == -1 or end == -1:
@@ -135,7 +100,6 @@ def parse_llm_response(raw: str) -> dict:
         logger.error("Could not extract JSON from LLM response, using fallback")
         data = {}
 
-    # Ensure all keys exist; fill missing with "-"
     result = {}
     for key in EXPECTED_KEYS:
         value = data.get(key)
