@@ -26,7 +26,7 @@ GOOGLE_CREDENTIALS_JSON: str = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
 POPPLER_PATH: str = os.getenv("POPPLER_PATH", "")
 
 # Gemini
-VISION_MODEL = "gemini-1.5-flash"
+VISION_MODEL = "gemini-2.0-flash"
 
 # PDF processing
 MAX_PAGES = 20
